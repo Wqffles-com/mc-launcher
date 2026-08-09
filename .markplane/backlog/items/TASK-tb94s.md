@@ -1,7 +1,7 @@
 ---
 id: TASK-tb94s
 title: Instance config persistence
-status: backlog
+status: done
 priority: high
 type: feature
 effort: medium
@@ -14,29 +14,23 @@ assignee: null
 tags: []
 position: a9
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Instance config persistence
 
 ## Description
 
-[What needs to be done and why — the problem, context, and key constraints.
-An implementer reads this to understand the work. Focus on outcomes, not
-implementation steps; a task defines the problem and success criteria,
-not how to solve it.]
+Persist per-instance configuration in a human-readable, diff-friendly format inside the instance folder so instances survive restarts and are portable.
 
 ## Acceptance Criteria
 
-[Observable outcomes that verify completeness — what you'd check in review.
-Not an implementation checklist.]
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [x] `InstanceConfig` (id, name, version, optional loader, game dir, created/last-played timestamps) persisted as pretty JSON in `instances/<id>/instance.json`.
+- [x] Config reloads from disk (list/get round-trip) and writes are atomic (temp file + rename).
+- [x] Timestamps are RFC 3339 UTC strings (readable, sorted-friendly), produced by a dependency-free clock helper.
 
 ## Notes
 
-[Reference material, links, additional context.]
+- Landed in `core/src/instances.rs` + `core/src/clock.rs`. Schema versioning deferred until the modpack lockfile epic.
 
 ## References

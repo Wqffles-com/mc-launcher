@@ -1,7 +1,7 @@
 ---
 id: TASK-c6bqu
 title: Instance create/delete/clone
-status: backlog
+status: done
 priority: high
 type: feature
 effort: medium
@@ -14,29 +14,25 @@ assignee: null
 tags: []
 position: a7
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Instance create/delete/clone
 
 ## Description
 
-[What needs to be done and why — the problem, context, and key constraints.
-An implementer reads this to understand the work. Focus on outcomes, not
-implementation steps; a task defines the problem and success criteria,
-not how to solve it.]
+Full lifecycle for game instances: create a new instance (name + Minecraft version), delete one including its game data, and clone one under a new name. Clones must be fully independent copies, not references to the source.
 
 ## Acceptance Criteria
 
-[Observable outcomes that verify completeness — what you'd check in review.
-Not an implementation checklist.]
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [x] `InstanceManager::create` makes the instance folder + `game/` dir, persists `instance.json`, rejects invalid or duplicate names.
+- [x] `delete` removes the instance folder and game data; unknown instances error cleanly.
+- [x] `clone` copies config and game contents into a fresh id/name; mutating the clone never touches the source.
+- [x] CLI: `instance create/delete/clone/list/info`.
 
 ## Notes
 
-[Reference material, links, additional context.]
+- Landed in `core/src/instances.rs`; ids are random hex (`in-<16 hex>`), folder name = id.
+- `mc-launcher instance create <name> --version <id>`; version defaults to the latest release from the cached manifest.
 
 ## References

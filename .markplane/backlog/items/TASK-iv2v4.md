@@ -1,7 +1,7 @@
 ---
 id: TASK-iv2v4
 title: Project config schema & directory layout
-status: backlog
+status: done
 priority: high
 type: feature
 effort: medium
@@ -14,29 +14,23 @@ assignee: null
 tags: []
 position: a2
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Project config schema & directory layout
 
 ## Description
 
-[What needs to be done and why — the problem, context, and key constraints.
-An implementer reads this to understand the work. Focus on outcomes, not
-implementation steps; a task defines the problem and success criteria,
-not how to solve it.]
+Define the launcher-wide config schema (`config.json`) and the full on-disk layout, so later features (instances, downloads, auth, Java) have stable homes. Directory overrides let users relocate heavy state (instances, downloads) off the default data root.
 
 ## Acceptance Criteria
 
-[Observable outcomes that verify completeness — what you'd check in review.
-Not an implementation checklist.]
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [x] `config.json` schema with optional overrides for `instances_dir`, `downloads_dir`, `accounts_dir`, `java_dir`; relative paths resolve against the data root, absolute paths are used as-is.
+- [x] `Directories` exposes every layout path (`cache/`, `downloads/`, `java/`, `accounts/`, `instances/`, `exports/`) and honors config overrides.
+- [x] Config persists atomically and round-trips; corrupt config fails loudly instead of silently resetting.
 
 ## Notes
 
-[Reference material, links, additional context.]
+- Landed in `core/src/config.rs` (`LauncherConfig`) and `core/src/dirs.rs` (`Directories::discover` loads the config, `ensure_all` creates every directory).
 
 ## References
