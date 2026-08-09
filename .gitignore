@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+/app/src-tauri/target/
+/app/src-tauri/gen/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json

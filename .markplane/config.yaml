@@ -1,0 +1,36 @@
+version: 1
+project:
+  name: mc-launcher
+  description: ''
+context:
+  token_budget: 1000
+  recent_days: 7
+  auto_generate: true
+documentation_paths: []
+task_types:
+- feature
+- bug
+- enhancement
+- chore
+- research
+- spike
+note_types:
+- research
+- analysis
+- idea
+- decision
+- meeting
+workflows:
+  task:
+    draft:
+    - draft
+    backlog:
+    - backlog
+    planned:
+    - planned
+    active:
+    - in-progress
+    completed:
+    - done
+    cancelled:
+    - cancelled
