@@ -5,7 +5,7 @@ status: draft
 implements: [TASK-y2n5u]
 related: []
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # v1 launch pipeline implementation
@@ -24,9 +24,9 @@ Implement the complete vanilla launch pipeline in the Rust core: manifest fetch,
 
 ## Phases
 
-- **Phase 1 - Models**: manifest + version JSON serde types with rules evaluation.
-- **Phase 2 - Downloads**: concurrent library downloader, asset index (virtual + non-virtual).
-- **Phase 3 - Launch**: argument merging, natives unpacking, process spawn, log piping, exit codes.
+- **Phase 1 - Models**: manifest + version JSON serde types with rules evaluation. **DONE (2026-08-10)**: TASK-pam7q (manifest fetch/cache, `core/src/version_manifest.rs`) and TASK-2vzm2 (version JSON models, `core/src/version_json.rs`) landed; CLI `version list/info` works against the live Mojang API.
+- **Phase 2 - Downloads**: concurrent library downloader, asset index (virtual + non-virtual). (TASK-458cd, TASK-ra35r)
+- **Phase 3 - Launch**: argument merging, natives unpacking, process spawn, log piping, exit codes. (TASK-wpwuz, TASK-y2n5u, TASK-qc438)
 
 ## Testing
 

@@ -1,0 +1,16 @@
+[package]
+name = "mc-launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "mc-launcher CLI: install, launch and manage Minecraft versions"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+mc-launcher-core = { path = "../core" }
+reqwest.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

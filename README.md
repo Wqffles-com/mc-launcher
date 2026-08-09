@@ -6,6 +6,8 @@ A cross-platform Minecraft launcher CLI and desktop app — vanilla and modded, 
 
 Early development. The roadmap is managed with [Markplane](https://github.com/zerowand01/markplane) inside this repo — see [`.markplane/roadmap/INDEX.md`](.markplane/roadmap/INDEX.md) for epics in `now` / `next` / `later` phases, or run `markplane serve` for the web UI.
 
+Progress so far: Cargo workspace scaffolded (`core` library + `cli` binary), Mojang version manifest fetch/cache and version-JSON parsing landed. Try `cargo run -p mc-launcher -- version list` (workspace builds with `cargo build --workspace`).
+
 ## Goals
 
 - **Vanilla + modded**: install and launch any Minecraft release or snapshot

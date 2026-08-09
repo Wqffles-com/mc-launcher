@@ -1,7 +1,7 @@
 ---
 id: TASK-pcbp6
 title: CLI skeleton with clap subcommands
-status: backlog
+status: done
 priority: high
 type: feature
 effort: medium
@@ -14,29 +14,24 @@ assignee: null
 tags: []
 position: a1
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # CLI skeleton with clap subcommands
 
 ## Description
 
-[What needs to be done and why — the problem, context, and key constraints.
-An implementer reads this to understand the work. Focus on outcomes, not
-implementation steps; a task defines the problem and success criteria,
-not how to solve it.]
+clap v4 skeleton exposing `init`, `install`, `launch`, `login`, `instance` and `version` (list/info) subcommands. `init` and `version` are functional end-to-end; the rest are stubs that land with their epics.
 
 ## Acceptance Criteria
 
-[Observable outcomes that verify completeness — what you'd check in review.
-Not an implementation checklist.]
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [x] `mc-launcher --help` lists init/install/launch/login/instance/version subcommands
+- [x] `mc-launcher init` creates `~/.mc-launcher/` layout
+- [x] `mc-launcher version list` and `version info <id>` work against the live Mojang API
 
 ## Notes
 
-[Reference material, links, additional context.]
+- Implemented in `cli/src/main.rs` on tokio; anyhow for CLI error reporting.
+- Install/launch stubs reference their target tasks (TASK-458cd, TASK-ix345, EPIC-65jcv).
 
 ## References

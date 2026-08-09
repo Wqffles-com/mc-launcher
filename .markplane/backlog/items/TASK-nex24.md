@@ -1,7 +1,7 @@
 ---
 id: TASK-nex24
 title: Scaffold Cargo workspace (core, cli, app crates)
-status: backlog
+status: done
 priority: high
 type: chore
 effort: medium
@@ -14,29 +14,24 @@ assignee: null
 tags: []
 position: a0
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Scaffold Cargo workspace (core, cli, app crates)
 
 ## Description
 
-[What needs to be done and why — the problem, context, and key constraints.
-An implementer reads this to understand the work. Focus on outcomes, not
-implementation steps; a task defines the problem and success criteria,
-not how to solve it.]
+Create the Cargo workspace with `core` (library) and `cli` (binary) crates, shared workspace dependencies and lints (edition 2024, forbid unsafe, clippy pedantic). The `app` Tauri crate is scaffolded later with TASK-yeggv.
 
 ## Acceptance Criteria
 
-[Observable outcomes that verify completeness — what you'd check in review.
-Not an implementation checklist.]
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [x] Workspace builds cleanly with zero warnings (cargo build --workspace)
+- [x] `cargo clippy --workspace --all-targets` clean; `cargo fmt --check` clean
+- [x] Shared deps (reqwest/rustls, tokio, serde, clap, anyhow, thiserror) declared once in `[workspace.dependencies]`
 
 ## Notes
 
-[Reference material, links, additional context.]
+- Structure: root `Cargo.toml` (workspace), `core/` mc-launcher-core, `cli/` mc-launcher.
+- CI pipeline is TASK-jrvwv (still open). App crate deferred to TASK-yeggv.
 
 ## References
