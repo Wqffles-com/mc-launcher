@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use mc_launcher_core::accounts::{Account, AccountManager};
 use mc_launcher_core::assets::ProgressFn;
+use mc_launcher_core::auth::{self, DeviceCode, DevicePoll};
 use mc_launcher_core::dirs::Directories;
 use mc_launcher_core::download::Progress;
 use mc_launcher_core::instances::{Instance, InstanceManager, Loader, LoaderKind};
@@ -45,7 +47,13 @@ enum Command {
         /// Launch inside this instance instead (uses its version and game dir)
         #[arg(long)]
         instance: Option<String>,
-        /// Player name for the offline profile
+        /// Sign in as this account (UUID or name); defaults to the most
+        /// recently used account. Falls back to an offline profile when no
+        /// account is signed in.
+        #[arg(long)]
+        account: Option<String>,
+        /// Player name for the offline profile (ignored when --account is
+        /// used or a signed-in account exists)
         #[arg(long, default_value = "Player")]
         username: String,
         /// JVM heap size, e.g. 2G
@@ -64,6 +72,11 @@ enum Command {
     },
     /// Sign in with a Microsoft account (device code flow)
     Login,
+    /// Manage signed-in Microsoft accounts
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
     /// Manage game instances
     Instance {
         #[command(subcommand)]
@@ -136,6 +149,22 @@ enum InstanceCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum AccountCommand {
+    /// List signed-in accounts (most recently used first)
+    List,
+    /// Remove a signed-in account (by UUID or name)
+    Remove {
+        /// Account UUID or name
+        account: String,
+    },
+    /// Switch the default account (most recently used is used by default)
+    Use {
+        /// Account UUID or name
+        account: String,
+    },
+}
+
 #[derive(Debug, clap::Args)]
 struct VersionArgs {
     #[command(subcommand)]
@@ -172,15 +201,20 @@ async fn main() -> Result<()> {
         Command::Launch {
             version,
             instance,
+            account,
             username,
             memory,
             java,
             width,
             height,
-        } => cmd_launch(version, instance, &username, memory, java, width, height).await,
-        Command::Login => anyhow::bail!(
-            "not implemented yet — Microsoft auth lands with the device-code flow (TASK-ix345)"
-        ),
+        } => {
+            cmd_launch(
+                version, instance, account, &username, memory, java, width, height,
+            )
+            .await
+        }
+        Command::Login => cmd_login().await,
+        Command::Account { command } => cmd_account(command),
         Command::Instance { command } => {
             cmd_instance(command.unwrap_or(InstanceCommand::List)).await
         }
@@ -236,9 +270,109 @@ async fn cmd_install(version: Option<String>, refresh: bool) -> Result<()> {
     Ok(())
 }
 
+/// Run the Microsoft device code sign-in end to end and store the account.
+async fn cmd_login() -> Result<()> {
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    let client = http_client();
+    let client_id = auth::client_id();
+    println!("Requesting a Microsoft device code...");
+    let code = auth::request_device_code(&client, &client_id)
+        .await
+        .context("failed to request a device code")?;
+    let poll = auth::wait_for_device_approval(&client, &client_id, &code, print_device_code)
+        .await
+        .context("device code flow did not complete")?;
+    let DevicePoll::Authorized {
+        access_token,
+        refresh_token,
+    } = poll
+    else {
+        unreachable!("wait_for_device_approval only returns authorized or errors")
+    };
+    println!("Exchanging tokens...");
+    let (mc, profile) = auth::complete_sign_in(&client, &access_token)
+        .await
+        .context("failed to complete the Xbox/Minecraft sign-in")?;
+    let manager = AccountManager::new(dirs);
+    let mut account = Account::new(&mc, &profile);
+    account.refresh_token = Some(refresh_token);
+    manager
+        .save(&mut account)
+        .context("failed to store the account")?;
+    println!(
+        "Signed in as {} ({}) — token stored {}",
+        account.name,
+        account.id,
+        match account.token_storage.as_str() {
+            "keyring" => "in the OS credential store",
+            _ => "in the accounts directory (no OS keyring available)",
+        }
+    );
+    Ok(())
+}
+
+fn print_device_code(code: &DeviceCode) {
+    println!("Go to {} and enter:", code.verification_uri);
+    println!();
+    println!("    {}", code.user_code);
+    println!();
+    if let Some(uri) = &code.verification_uri_complete {
+        println!("or open this link directly: {uri}");
+    }
+    if let Some(message) = &code.message {
+        println!("{message}");
+    }
+    println!(
+        "Waiting for approval (code expires in {}s)...",
+        code.expires_in
+    );
+}
+
+fn cmd_account(command: AccountCommand) -> Result<()> {
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    let manager = AccountManager::new(dirs);
+    match command {
+        AccountCommand::List => {
+            let accounts = manager.list()?;
+            if accounts.is_empty() {
+                println!(
+                    "No accounts signed in — use `mc-launcher login` to sign in with Microsoft"
+                );
+                return Ok(());
+            }
+            println!(
+                "NAME       UUID                                  EXPIRES             STORAGE"
+            );
+            for account in &accounts {
+                println!(
+                    "{:<10} {:<36} {:<20} {}",
+                    account.name,
+                    account.id,
+                    account.expires_at.as_deref().unwrap_or("-"),
+                    account.token_storage
+                );
+            }
+        }
+        AccountCommand::Remove { account } => {
+            manager.remove(&account)?;
+            println!("Removed account '{account}'");
+        }
+        AccountCommand::Use { account } => {
+            let used = manager.get(&account)?;
+            manager.touch(&used.id)?;
+            println!("Switched default account to {} ({})", used.name, used.id);
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn cmd_launch(
     version: Option<String>,
     instance: Option<String>,
+    account: Option<String>,
     username: &str,
     memory: Option<String>,
     java: Option<PathBuf>,
@@ -283,7 +417,18 @@ async fn cmd_launch(
         "Preparing Minecraft {version_id} ({}) ...",
         version_json.kind
     );
-    let player = Player::offline(username);
+    let player = resolve_player(&dirs, account.as_deref(), username)
+        .await
+        .context("could not resolve a player profile")?;
+    if player.user_type == "msa" {
+        println!("Launching as {} ({})", player.name, player.uuid);
+    } else {
+        println!(
+            "No signed-in account — launching with an offline profile as '{}' \
+             (use `mc-launcher login`)",
+            player.name
+        );
+    }
     let options = LaunchOptions {
         game_dir: game_dir.clone(),
         java,
@@ -321,6 +466,46 @@ async fn cmd_launch(
         std::process::exit(outcome.exit.code().unwrap_or(1));
     }
     Ok(())
+}
+
+/// Resolve the player profile for a launch: the explicitly selected account,
+/// else the default (most recently used) account, else an offline profile.
+/// Accounts with an expired Minecraft token are refreshed automatically.
+async fn resolve_player(
+    dirs: &Directories,
+    selector: Option<&str>,
+    offline_name: &str,
+) -> Result<Player> {
+    let manager = AccountManager::new(dirs.clone());
+    let account = match selector {
+        Some(sel) => Some(manager.get(sel)?),
+        // The offline path must not depend on the accounts directory being
+        // healthy: a corrupt account file falls back to offline with a
+        // warning instead of failing the launch.
+        None => match manager.default() {
+            Ok(account) => account,
+            Err(e) => {
+                eprintln!("warning: could not read signed-in accounts ({e}); launching offline");
+                None
+            }
+        },
+    };
+    let Some(mut account) = account else {
+        return Ok(Player::offline(offline_name));
+    };
+    if account.access_token_expired() {
+        println!("Refreshing tokens for {} ...", account.name);
+        account = manager
+            .refresh(&http_client(), &account)
+            .await
+            .context("failed to refresh the account tokens")?;
+    }
+    manager.touch(&account.id)?;
+    Ok(Player::microsoft(
+        &account.name,
+        &account.id,
+        &account.access_token,
+    ))
 }
 
 /// Install (or verify) all artifacts of a version, printing progress.

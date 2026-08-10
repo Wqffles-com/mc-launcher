@@ -1,7 +1,7 @@
 ---
 id: TASK-qnntc
 title: Profile/UUID fetch & authenticated API calls
-status: backlog
+status: done
 priority: high
 type: feature
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a6
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Profile/UUID fetch & authenticated API calls

@@ -1,7 +1,7 @@
 ---
 id: TASK-ix345
 title: Device code flow Microsoft login
-status: backlog
+status: done
 priority: critical
 type: feature
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a6
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Device code flow Microsoft login

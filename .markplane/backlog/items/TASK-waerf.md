@@ -1,7 +1,7 @@
 ---
 id: TASK-waerf
 title: Token storage, refresh & encryption
-status: backlog
+status: done
 priority: critical
 type: feature
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a7
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Token storage, refresh & encryption

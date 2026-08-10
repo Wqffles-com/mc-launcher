@@ -1,7 +1,9 @@
 //! Core library for mc-launcher: version manifest, downloads, auth and launch engine.
 
+pub mod accounts;
 pub mod args;
 pub mod assets;
+pub mod auth;
 pub mod clock;
 pub mod config;
 pub mod dirs;

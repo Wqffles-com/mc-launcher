@@ -42,6 +42,19 @@ impl Player {
             user_type: "legacy".to_owned(),
         }
     }
+
+    /// A Microsoft account profile: real UUID, `msa` user type and the live
+    /// Minecraft access token. The UUID is normalized to the dash-less form
+    /// the game expects.
+    #[must_use]
+    pub fn microsoft(name: &str, uuid_dashed: &str, access_token: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            uuid: uuid_dashed.replace('-', ""),
+            access_token: access_token.to_owned(),
+            user_type: "msa".to_owned(),
+        }
+    }
 }
 
 /// The outcome of a finished game process.

@@ -53,6 +53,18 @@ pub enum Error {
     UnsafeZipPath(String),
     #[error("version {0} has no main class")]
     NoMainClass(String),
+    #[error("authentication failed: {0}")]
+    Auth(String),
+    #[error("the authorization request was declined")]
+    AuthDeclined,
+    #[error("the device code expired before the user approved it")]
+    AuthExpired,
+    #[error("account not found: {0}")]
+    AccountNotFound(String),
+    #[error("the account's refresh token could not be recovered from secure storage")]
+    RefreshTokenUnavailable,
+    #[error("keyring error: {0}")]
+    Keyring(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

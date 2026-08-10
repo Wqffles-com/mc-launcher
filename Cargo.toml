@@ -10,6 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 anyhow = "1"
 dirs = "6"
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native", "sync-secret-service"] }
 md-5 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

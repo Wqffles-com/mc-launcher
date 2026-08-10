@@ -4,6 +4,16 @@ Lightweight decision log. Format: `## YYYY-MM-DD: Decision Title`
 
 ---
 
+## 2026-08-10: Microsoft auth (EPIC-xrju6)
+
+- Client id: ship the well-known public Microsoft client `00000000402B5328` (used by community launchers for the Minecraft device flow) as `DEFAULT_CLIENT_ID`; `MC_LAUNCHER_CLIENT_ID` env overrides it for self-hosted Azure registrations. A shared hosted client is deferred until release.
+- Scope: `XboxLive.signin offline_access` (device + refresh flows); Microsoft refresh tokens rotate, so every refresh persists the new pair.
+- Token storage: per-account JSON at `accounts/<uuid>.json` holds metadata + short-lived Minecraft access token (plaintext — it expires in ~24 h); the long-lived refresh token goes to the OS keyring via the `keyring` crate (`windows-native`/`apple-native`/`sync-secret-service`). If the keyring is unavailable (e.g. headless Linux), the refresh token falls back into the JSON file with `"token_storage": "file"` so users can see it is unprotected.
+- Player for launches: `Player::microsoft` uses the profile UUID (dash-less), real name, Bearer access token and `user_type: "msa"`; launch auto-refreshes expired tokens and falls back to the offline v3-UUID profile only when no account exists.
+- Multi-account: default = most recently used (`last_used_at`); `account use` switches, `launch --account <uuid|name>` overrides.
+- Token expiry tracked via `clock::rfc3339_utc` timestamps; refresh triggers when the Minecraft token expires.
+- Keyring fallback policy: only `login` may move a keyring-stored refresh token into the plaintext file (announced); `touch`/`refresh` never silently downgrade — a keyring failure for a keyring-stored account is an error, and accounts already in `file` mode stay in `file` mode. Refresh also refetches the Mojang profile so player name changes propagate without re-login.
+
 ## 2026-08-10: Instance layout & config schema
 
 - Instance folder name = random hex id (`in-<16 hex>`); display name lives in the config so renames never break paths.

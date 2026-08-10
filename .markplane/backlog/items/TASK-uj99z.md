@@ -1,7 +1,7 @@
 ---
 id: TASK-uj99z
 title: Multi-account support & switching
-status: backlog
+status: done
 priority: medium
 type: enhancement
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a4
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Multi-account support & switching
