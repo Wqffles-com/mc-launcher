@@ -10,6 +10,7 @@ pub mod dirs;
 pub mod download;
 pub mod error;
 pub mod instances;
+pub mod java;
 pub mod launch;
 pub mod rules;
 pub mod version_json;

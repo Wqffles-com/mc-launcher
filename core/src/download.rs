@@ -170,9 +170,17 @@ fn size_overflow() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, "file size overflow")
 }
 
-/// The `.part` path used while a download is in flight.
+/// The `.part` path used while a download is in flight. The suffix is
+/// appended to the file name (not replacing the extension) so that e.g.
+/// `java.dll` and `java.exe` — which can coexist in a Java runtime — never
+/// share a `.part` file.
 fn partial_path(dest: &Path) -> PathBuf {
-    dest.with_extension("part")
+    let mut name = dest.file_name().map_or_else(
+        || "download".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    name.push_str(".part");
+    dest.with_file_name(name)
 }
 
 /// SHA-1 hex digest of a file, or `None` when it cannot be read.
@@ -180,6 +188,14 @@ fn partial_path(dest: &Path) -> PathBuf {
 pub async fn sha1_file(path: &Path) -> Option<String> {
     let bytes = tokio::fs::read(path).await.ok()?;
     Some(hex(&Sha1::digest(&bytes)))
+}
+
+/// SHA-256 hex digest of a file, or `None` when it cannot be read.
+#[must_use]
+pub(crate) async fn sha256_file(path: &Path) -> Option<String> {
+    use sha2::{Digest as _, Sha256};
+    let bytes = tokio::fs::read(path).await.ok()?;
+    Some(hex(&Sha256::digest(&bytes)))
 }
 
 fn hex(digest: &[u8]) -> String {
@@ -291,6 +307,24 @@ mod tests {
         format!("http://{addr}")
     }
 
+    #[test]
+    fn part_paths_are_unique_across_extension_pairs() {
+        // Java runtimes ship both foo.dll and foo.exe; their `.part` files
+        // must not collide or concurrent downloads corrupt each other.
+        assert_ne!(
+            partial_path(Path::new("bin/foo.dll")),
+            partial_path(Path::new("bin/foo.exe"))
+        );
+        assert_eq!(
+            partial_path(Path::new("bin/foo.dll")),
+            PathBuf::from("bin/foo.dll.part")
+        );
+        assert_eq!(
+            partial_path(Path::new("bin/java")),
+            PathBuf::from("bin/java.part")
+        );
+    }
+
     #[tokio::test]
     async fn downloads_fresh_file_and_verifies_sha1() {
         let body = b"hello world".to_vec();
@@ -308,7 +342,7 @@ mod tests {
         .expect("download");
         assert_eq!(result, DownloadResult::Fresh);
         assert_eq!(std::fs::read(&dest).expect("read"), body);
-        assert!(!dest.with_extension("part").exists());
+        assert!(!partial_path(&dest).exists());
     }
 
     #[tokio::test]
@@ -363,7 +397,7 @@ mod tests {
         let dest = dir.join("big.bin");
         // Simulate an interrupted download: partial file with the first half.
         let first_half = &body[..body.len() / 2];
-        std::fs::write(dest.with_extension("part"), first_half).expect("write partial");
+        std::fs::write(partial_path(&dest), first_half).expect("write partial");
         let result = fetch(
             &reqwest::Client::new(),
             &format!("{url}/big.bin"),
@@ -388,7 +422,7 @@ mod tests {
         );
         let dir = tempdir();
         let dest = dir.join("big.bin");
-        std::fs::write(dest.with_extension("part"), &body[..100]).expect("write partial");
+        std::fs::write(partial_path(&dest), &body[..100]).expect("write partial");
         let result = fetch(
             &reqwest::Client::new(),
             &format!("{url}/big.bin"),
@@ -418,7 +452,7 @@ mod tests {
         let stale: Vec<u8> = (0..(body.len() + 100))
             .map(|i| u8::try_from(i % 251).expect("in range"))
             .collect();
-        std::fs::write(dest.with_extension("part"), &stale).expect("write stale partial");
+        std::fs::write(partial_path(&dest), &stale).expect("write stale partial");
         let result = fetch(
             &reqwest::Client::new(),
             &format!("{url}/big.bin"),
@@ -430,7 +464,7 @@ mod tests {
         .expect("restart after 416");
         assert_eq!(result, DownloadResult::Fresh);
         assert_eq!(std::fs::read(&dest).expect("read"), body);
-        assert!(!dest.with_extension("part").exists());
+        assert!(!partial_path(&dest).exists());
     }
 
     #[tokio::test]
@@ -452,7 +486,7 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, Error::ChecksumMismatch { .. }));
         assert!(!dest.exists());
-        assert!(!dest.with_extension("part").exists());
+        assert!(!partial_path(&dest).exists());
     }
 
     #[tokio::test]
@@ -476,7 +510,7 @@ mod tests {
         // The partial is removed so a later attempt can start fresh instead
         // of failing the size check again forever.
         assert!(!dest.exists());
-        assert!(!dest.with_extension("part").exists());
+        assert!(!partial_path(&dest).exists());
     }
 
     #[tokio::test]

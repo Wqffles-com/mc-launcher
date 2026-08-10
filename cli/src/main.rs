@@ -60,7 +60,8 @@ enum Command {
         #[arg(long)]
         memory: Option<String>,
         /// Path to a Java executable (or a directory containing `bin/java`);
-        /// defaults to `JAVA_HOME` or `java` on PATH
+        /// defaults to the best available runtime (system JVM of the required
+        /// major, or an auto-downloaded one)
         #[arg(long)]
         java: Option<PathBuf>,
         /// Window width (enables custom resolution)
@@ -84,6 +85,22 @@ enum Command {
     },
     /// Version manifest & metadata
     Version(VersionArgs),
+    /// Manage Java runtimes
+    Java {
+        #[command(subcommand)]
+        command: JavaCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum JavaCommand {
+    /// List detected system JVMs and cached managed runtimes
+    List,
+    /// Download and cache a managed Java runtime (auto-selected on launch)
+    Install {
+        /// Java major version (e.g. 8, 17, 21)
+        major: u32,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -219,6 +236,7 @@ async fn main() -> Result<()> {
             cmd_instance(command.unwrap_or(InstanceCommand::List)).await
         }
         Command::Version(args) => cmd_version(args).await,
+        Command::Java { command } => cmd_java(command).await,
     }
 }
 
@@ -545,6 +563,59 @@ fn print_progress(progress: Progress) {
         }
     }
     let _ = stdout.flush();
+}
+
+async fn cmd_java(command: JavaCommand) -> Result<()> {
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    match command {
+        JavaCommand::List => {
+            let system = mc_launcher_core::java::detect_system();
+            println!("SYSTEM JVMS");
+            if system.is_empty() {
+                println!("  (none found)");
+            }
+            for runtime in &system {
+                println!("  Java {}: {}", runtime.major, runtime.home.display());
+            }
+            let managed = mc_launcher_core::java::managed_runtimes(&dirs);
+            println!("MANAGED RUNTIMES");
+            if managed.is_empty() {
+                println!("  (none — `mc-launcher java install <major>` to download one)");
+            }
+            for runtime in managed {
+                println!("  Java {}: {}", runtime.major, runtime.home.display());
+            }
+        }
+        JavaCommand::Install { major } => {
+            if let Some(runtime) = mc_launcher_core::java::managed_runtime(&dirs, major) {
+                println!(
+                    "Java {} already installed at {}",
+                    runtime.major,
+                    runtime.home.display()
+                );
+                return Ok(());
+            }
+            let component = mc_launcher_core::java::component_for_major(major);
+            println!("Downloading Java {major} ...");
+            let progress: Option<ProgressFn> = Some(Arc::new(print_progress));
+            let runtime = mc_launcher_core::java::ensure_runtime(
+                &dirs,
+                &download_client(),
+                major,
+                component,
+                progress,
+            )
+            .await
+            .context(format!("failed to install Java {major}"))?;
+            println!(
+                "Installed Java {} at {}",
+                runtime.major,
+                runtime.home.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 async fn cmd_version(args: VersionArgs) -> Result<()> {

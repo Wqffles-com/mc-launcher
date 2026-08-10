@@ -75,8 +75,9 @@ pub struct LaunchOptions {
     /// The game directory (an instance's game dir, or a scratch dir for bare
     /// version launches).
     pub game_dir: PathBuf,
-    /// Java executable (or JAVA_HOME-style directory). Defaults to
-    /// `JAVA_HOME/bin/java` or `java` on PATH.
+    /// Java executable (or JAVA_HOME-style directory). Defaults to the best
+    /// available runtime: a system JVM of the version's required major, or an
+    /// auto-downloaded managed runtime (see [`crate::java`]).
     pub java: Option<PathBuf>,
     /// JVM heap (`-Xmx`) size, e.g. `2G`.
     pub memory: Option<String>,
@@ -387,7 +388,7 @@ pub fn extract_native_jar(archive_path: &Path, target: &Path, excludes: &[String
     Ok(())
 }
 
-fn sanitize_entry_path(name: &str) -> Result<PathBuf> {
+pub(crate) fn sanitize_entry_path(name: &str) -> Result<PathBuf> {
     let normalized = name.replace('\\', "/");
     let path = Path::new(&normalized);
     if path.is_absolute() {
@@ -548,8 +549,18 @@ pub async fn launch(
     options: LaunchOptions,
     progress: Option<assets::ProgressFn>,
 ) -> Result<LaunchOutcome> {
+    let runtime = crate::java::resolve_runtime(
+        dirs,
+        client,
+        version.java_version.as_ref(),
+        options.java.as_deref(),
+        progress.clone(),
+    )
+    .await?;
     let installed = install(dirs, client, version, &options.game_dir, progress).await?;
     let platform = Platform::current();
+    let mut options = options;
+    options.java = Some(runtime.java_executable());
     let command = build_command(&installed, player, &options, &platform)?;
     let java = &command[0];
 

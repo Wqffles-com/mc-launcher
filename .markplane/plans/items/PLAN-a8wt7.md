@@ -1,7 +1,7 @@
 ---
 id: PLAN-a8wt7
 title: v1 launch pipeline implementation
-status: completed
+status: done
 implements: [TASK-y2n5u]
 related: []
 created: 2026-08-09

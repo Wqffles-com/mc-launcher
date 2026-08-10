@@ -41,8 +41,12 @@ pub enum Error {
     DownloadSizeMismatch { url: String },
     #[error("no client jar download is available for version {0}")]
     NoClientJar(String),
-    #[error("no Java runtime found (set JAVA_HOME or --java)")]
+    #[error(
+        "no usable Java runtime found (install one with `mc-launcher java install <major>`, set JAVA_HOME, or pass --java)"
+    )]
     JavaNotFound,
+    #[error("java runtime error: {0}")]
+    JavaRuntime(String),
     #[error("invalid maven coordinate: {0}")]
     InvalidMavenName(String),
     #[error("internal task failed: {0}")]
