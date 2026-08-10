@@ -49,10 +49,17 @@ pub struct JavaRuntime {
 }
 
 impl JavaRuntime {
-    /// The `java` executable inside this runtime.
+    /// The `java` executable inside this runtime — `bin/java` for standard
+    /// home layouts, or the executable sitting directly in the home for
+    /// stub-style layouts (e.g. Oracle's `javapath`).
     #[must_use]
     pub fn java_executable(&self) -> PathBuf {
-        self.home.join("bin").join(java_executable_name())
+        let direct = self.home.join(java_executable_name());
+        if direct.is_file() {
+            direct
+        } else {
+            self.home.join("bin").join(java_executable_name())
+        }
     }
 }
 
@@ -71,7 +78,15 @@ fn collect_runtimes(homes: Vec<PathBuf>) -> Vec<JavaRuntime> {
     let mut seen = std::collections::HashSet::new();
     let mut runtimes = Vec::new();
     for home in homes {
-        let Some(major) = runtime_major(&home) else {
+        // Some layouts (e.g. Oracle's `javapath` stub dir on Windows) hold
+        // `java` directly instead of under `bin/` and have no `release`
+        // file; probe the executable itself for those.
+        let Some(major) = runtime_major(&home).or_else(|| {
+            let exe = home.join(java_executable_name());
+            exe.is_file()
+                .then(|| probe_executable_major(&exe))
+                .flatten()
+        }) else {
             continue;
         };
         let key = std::fs::canonicalize(&home).unwrap_or_else(|_| home.clone());
@@ -369,12 +384,12 @@ pub async fn ensure_runtime_from(
         )
         .await
         {
-            Ok(()) => return Ok(managed_runtime(dirs, major).expect("runtime was installed")),
+            Ok(()) => return validate_installed(dirs, major),
             Err(e) => mojang_error = Some(e.to_string()),
         }
     }
     match download_adoptium_runtime(dirs, client, major, progress, adoptium_assets_url).await {
-        Ok(()) => Ok(managed_runtime(dirs, major).expect("runtime was installed")),
+        Ok(()) => validate_installed(dirs, major),
         Err(e) => Err(Error::JavaRuntime(format!(
             "failed to download a Java {major} runtime{}",
             mojang_error.map_or_else(String::new, |mojang| {
@@ -382,6 +397,16 @@ pub async fn ensure_runtime_from(
             })
         ))),
     }
+}
+
+/// Confirm a just-installed runtime is usable, returning a proper error
+/// instead of panicking when the cache check fails.
+fn validate_installed(dirs: &Directories, major: u32) -> Result<JavaRuntime> {
+    managed_runtime(dirs, major).ok_or_else(|| {
+        Error::JavaRuntime(format!(
+            "Java {major} was downloaded but could not be validated in the runtime cache"
+        ))
+    })
 }
 
 /// Download a runtime from Mojang's per-file manifests into `java/<major>/`.
@@ -849,15 +874,15 @@ fn pick_system(system: &[JavaRuntime], required: u32) -> Option<JavaRuntime> {
     system.iter().find(|r| r.major == required).cloned()
 }
 
-/// The closest system runtime: the smallest major >= required, else the
-/// newest overall (list is sorted by major descending).
+/// The closest system runtime: the smallest major >= required. A JVM older
+/// than required would crash the game with `UnsupportedClassVersionError`,
+/// so it is never chosen — `None` lets the caller report a clear error.
 #[must_use]
 fn nearest_system(system: &[JavaRuntime], required: u32) -> Option<JavaRuntime> {
     system
         .iter()
         .filter(|r| r.major >= required)
         .min_by_key(|r| r.major)
-        .or_else(|| system.first())
         .cloned()
 }
 
@@ -962,6 +987,25 @@ mod tests {
     }
 
     #[test]
+    fn collect_runtimes_accepts_executable_in_dir_layouts() {
+        // Stub-style layouts (e.g. Oracle `javapath` on Windows) hold the
+        // executable directly and a `release` file instead of `bin/java`.
+        let root = tempdir();
+        let dir = root.join("javapath");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("release"), "JAVA_VERSION=\"21.0.7\"\n").expect("write");
+        std::fs::write(dir.join(java_executable_name()), b"").expect("write");
+
+        let runtimes = collect_runtimes(vec![dir.clone()]);
+        assert_eq!(runtimes.len(), 1);
+        assert_eq!(runtimes[0].major, 21);
+        // The executable resolves directly in the dir, not under bin/.
+        let exe = runtimes[0].java_executable();
+        assert_eq!(exe, dir.join(java_executable_name()));
+        assert!(exe.is_file());
+    }
+
+    #[test]
     fn pick_and_nearest_follow_the_policy() {
         let runtimes = vec![
             JavaRuntime {
@@ -990,11 +1034,12 @@ mod tests {
             nearest_system(&runtimes, 21).expect("nearest").home,
             PathBuf::from("/jvm25")
         );
-        // Newest overall when nothing is big enough.
         assert_eq!(
-            nearest_system(&runtimes, 32).expect("newest").home,
-            PathBuf::from("/jvm25")
+            nearest_system(&runtimes, 9).expect("nearest").home,
+            PathBuf::from("/jvm17")
         );
+        // Nothing >= required means no fallback, not a doomed launch.
+        assert!(nearest_system(&runtimes, 32).is_none());
     }
 
     #[test]
