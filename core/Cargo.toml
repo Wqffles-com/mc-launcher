@@ -10,13 +10,15 @@ workspace = true
 
 [dependencies]
 dirs.workspace = true
+md-5.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha1.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
 zip.workspace = true
 
 [dev-dependencies]
 filetime = "0.2"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

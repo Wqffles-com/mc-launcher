@@ -25,8 +25,8 @@ pub struct VersionJson {
     /// Legacy argument string (pre-1.13 versions).
     #[serde(rename = "minecraftArguments", default)]
     pub minecraft_arguments: Option<String>,
-    #[serde(rename = "assetIndex")]
-    pub asset_index: AssetIndex,
+    #[serde(rename = "assetIndex", default)]
+    pub asset_index: Option<AssetIndex>,
     #[serde(default)]
     pub assets: Option<String>,
     #[serde(rename = "javaVersion", default)]
@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(values[0], "--width");
         assert_eq!(args.jvm.len(), 2);
 
-        assert_eq!(v.asset_index.id, "25");
+        assert_eq!(v.asset_index.as_ref().expect("asset index").id, "25");
         assert_eq!(v.assets.as_deref(), Some("25"));
         assert_eq!(
             v.java_version.as_ref().expect("java version").major_version,

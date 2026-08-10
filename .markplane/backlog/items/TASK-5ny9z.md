@@ -1,7 +1,7 @@
 ---
 id: TASK-5ny9z
 title: Snapshots & experimental versions support
-status: backlog
+status: done
 priority: high
 type: enhancement
 effort: small
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a5
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Snapshots & experimental versions support

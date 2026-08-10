@@ -1,7 +1,7 @@
 ---
 id: TASK-y2n5u
 title: Launch vanilla game & process lifecycle management
-status: backlog
+status: done
 priority: critical
 type: feature
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a5
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Launch vanilla game & process lifecycle management

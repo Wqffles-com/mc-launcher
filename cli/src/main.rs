@@ -1,10 +1,15 @@
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use mc_launcher_core::assets::ProgressFn;
 use mc_launcher_core::dirs::Directories;
+use mc_launcher_core::download::Progress;
 use mc_launcher_core::instances::{Instance, InstanceManager, Loader, LoaderKind};
+use mc_launcher_core::launch::{self, LaunchOptions, Player};
 use mc_launcher_core::version_json;
 use mc_launcher_core::version_manifest::MANIFEST_URL;
 use mc_launcher_core::version_manifest::{self, VersionManifest};
@@ -29,11 +34,33 @@ enum Command {
     Install {
         /// Version id (e.g. 1.21.4); defaults to the latest release
         version: Option<String>,
+        /// Re-fetch the version metadata, ignoring caches
+        #[arg(long)]
+        refresh: bool,
     },
-    /// Launch a Minecraft version
+    /// Launch a Minecraft version (installing it first if needed)
     Launch {
         /// Version id (e.g. 1.21.4); defaults to the latest release
         version: Option<String>,
+        /// Launch inside this instance instead (uses its version and game dir)
+        #[arg(long)]
+        instance: Option<String>,
+        /// Player name for the offline profile
+        #[arg(long, default_value = "Player")]
+        username: String,
+        /// JVM heap size, e.g. 2G
+        #[arg(long)]
+        memory: Option<String>,
+        /// Path to a Java executable (or a directory containing `bin/java`);
+        /// defaults to `JAVA_HOME` or `java` on PATH
+        #[arg(long)]
+        java: Option<PathBuf>,
+        /// Window width (enables custom resolution)
+        #[arg(long)]
+        width: Option<u32>,
+        /// Window height (enables custom resolution)
+        #[arg(long)]
+        height: Option<u32>,
     },
     /// Sign in with a Microsoft account (device code flow)
     Login,
@@ -141,11 +168,16 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Init => cmd_init(),
-        Command::Install { .. } | Command::Launch { .. } => {
-            anyhow::bail!(
-                "not implemented yet — install/launch land with the download & launch pipeline (TASK-458cd)"
-            )
-        }
+        Command::Install { version, refresh } => cmd_install(version, refresh).await,
+        Command::Launch {
+            version,
+            instance,
+            username,
+            memory,
+            java,
+            width,
+            height,
+        } => cmd_launch(version, instance, &username, memory, java, width, height).await,
         Command::Login => anyhow::bail!(
             "not implemented yet — Microsoft auth lands with the device-code flow (TASK-ix345)"
         ),
@@ -161,6 +193,173 @@ fn cmd_init() -> Result<()> {
     dirs.ensure_all()?;
     println!("Initialized {}", dirs.root().display());
     Ok(())
+}
+
+/// Resolve a version id to its manifest entry + cached version JSON.
+async fn resolve_version(
+    dirs: &Directories,
+    id: &str,
+    refresh: bool,
+) -> Result<mc_launcher_core::version_manifest::VersionInfo> {
+    let manifest = load_manifest(dirs, refresh).await?;
+    manifest
+        .find(id)
+        .ok_or_else(|| {
+            anyhow::anyhow!("version '{id}' not found in manifest — try `mc-launcher version list`")
+        })
+        .cloned()
+}
+
+async fn cmd_install(version: Option<String>, refresh: bool) -> Result<()> {
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    let info = if let Some(id) = version {
+        resolve_version(&dirs, &id, refresh).await?
+    } else {
+        let manifest = load_manifest(&dirs, false).await?;
+        resolve_version(&dirs, &manifest.latest.release, false).await?
+    };
+    let version_json = launch::load_version_json(&dirs, &http_client(), &info, refresh)
+        .await
+        .context(format!("failed to load version JSON for '{}'", info.id))?;
+    println!(
+        "Installing Minecraft {} ({}) ...",
+        version_json.id, version_json.kind
+    );
+    install_version(
+        &dirs,
+        &version_json,
+        &scratch_game_dir(&dirs, &version_json.id),
+    )
+    .await?;
+    println!("Installed {}", version_json.id);
+    Ok(())
+}
+
+async fn cmd_launch(
+    version: Option<String>,
+    instance: Option<String>,
+    username: &str,
+    memory: Option<String>,
+    java: Option<PathBuf>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<()> {
+    let resolution = match (width, height) {
+        (Some(width), Some(height)) => Some((width, height)),
+        (None, None) => None,
+        _ => anyhow::bail!("--width and --height must be given together"),
+    };
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    let manager = InstanceManager::new(dirs.clone());
+
+    let (version_id, game_dir, touch_id) = if let Some(name) = instance {
+        if version.is_some() {
+            anyhow::bail!("a version id cannot be combined with --instance");
+        }
+        let instance = manager.get(&name)?;
+        (
+            instance.version().to_owned(),
+            instance.game_dir(),
+            Some(instance.id().to_owned()),
+        )
+    } else {
+        let version_id = match version {
+            Some(id) => id,
+            None => latest_release(&dirs).await?,
+        };
+        let game_dir = scratch_game_dir(&dirs, &version_id);
+        (version_id, game_dir, None)
+    };
+    std::fs::create_dir_all(&game_dir)?;
+
+    let info = resolve_version(&dirs, &version_id, false).await?;
+    let version_json = launch::load_version_json(&dirs, &http_client(), &info, false)
+        .await
+        .context(format!("failed to load version JSON for '{version_id}'"))?;
+
+    println!(
+        "Preparing Minecraft {version_id} ({}) ...",
+        version_json.kind
+    );
+    let player = Player::offline(username);
+    let options = LaunchOptions {
+        game_dir: game_dir.clone(),
+        java,
+        memory,
+        resolution,
+        on_output: Some(Box::new(|line| {
+            let mut stdout = std::io::stdout().lock();
+            let _ = writeln!(stdout, "{line}");
+        })),
+    };
+    let progress: Option<ProgressFn> = Some(Arc::new(print_progress));
+    let outcome = launch::launch(
+        &dirs,
+        &download_client(),
+        &version_json,
+        &player,
+        options,
+        progress,
+    )
+    .await
+    .context("launch failed")?;
+
+    if let Some(id) = touch_id {
+        manager.touch(&id)?;
+    }
+    println!(
+        "Game exited with code {} (log: {})",
+        outcome
+            .exit
+            .code()
+            .map_or_else(|| "?".to_owned(), |code| code.to_string()),
+        outcome.log_file.display()
+    );
+    if !outcome.exit.success() {
+        std::process::exit(outcome.exit.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+/// Install (or verify) all artifacts of a version, printing progress.
+async fn install_version(
+    dirs: &Directories,
+    version_json: &mc_launcher_core::version_json::VersionJson,
+    game_dir: &std::path::Path,
+) -> Result<()> {
+    let progress: Option<ProgressFn> = Some(Arc::new(print_progress));
+    launch::install(dirs, &download_client(), version_json, game_dir, progress)
+        .await
+        .context("install failed")?;
+    Ok(())
+}
+
+/// The scratch game directory used for bare (non-instance) launches.
+fn scratch_game_dir(dirs: &Directories, version_id: &str) -> PathBuf {
+    dirs.root().join("launch").join(version_id)
+}
+
+fn print_progress(progress: Progress) {
+    let mut stdout = std::io::stdout().lock();
+    match progress {
+        Progress::File { name, done, total } => {
+            let percent = done.saturating_mul(100).checked_div(total).unwrap_or(0);
+            let _ = write!(stdout, "\r{name}: {percent}% ({done} / {total} bytes)");
+        }
+        Progress::FileDone { name, fresh } => {
+            let _ = writeln!(
+                stdout,
+                "\r{name}: {}",
+                if fresh { "already present" } else { "done" }
+            );
+        }
+        Progress::BatchDone { name, done, total } => {
+            let _ = writeln!(stdout, "[{done}/{total}] {name}");
+        }
+    }
+    let _ = stdout.flush();
 }
 
 async fn cmd_version(args: VersionArgs) -> Result<()> {
@@ -213,7 +412,7 @@ async fn cmd_version(args: VersionArgs) -> Result<()> {
             );
             println!(
                 "assets:            {} ({})",
-                version.asset_index.id,
+                version.asset_index.as_ref().map_or("-", |a| a.id.as_str()),
                 version.assets.as_deref().unwrap_or("-")
             );
             println!(
@@ -406,4 +605,12 @@ fn http_client() -> reqwest::Client {
         .timeout(Duration::from_secs(30))
         .build()
         .expect("build HTTP client")
+}
+
+/// A client with a long timeout for large downloads.
+fn download_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_mins(10))
+        .build()
+        .expect("build download client")
 }

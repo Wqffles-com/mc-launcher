@@ -1,7 +1,7 @@
 ---
 id: TASK-wpwuz
 title: Resolve JVM & game arguments (rules, natives)
-status: backlog
+status: done
 priority: critical
 type: feature
 effort: medium
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a4
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Resolve JVM & game arguments (rules, natives)

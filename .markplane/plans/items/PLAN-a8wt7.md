@@ -1,7 +1,7 @@
 ---
 id: PLAN-a8wt7
 title: v1 launch pipeline implementation
-status: draft
+status: completed
 implements: [TASK-y2n5u]
 related: []
 created: 2026-08-09
@@ -25,8 +25,8 @@ Implement the complete vanilla launch pipeline in the Rust core: manifest fetch,
 ## Phases
 
 - **Phase 1 - Models**: manifest + version JSON serde types with rules evaluation. **DONE (2026-08-10)**: TASK-pam7q (manifest fetch/cache, `core/src/version_manifest.rs`) and TASK-2vzm2 (version JSON models, `core/src/version_json.rs`) landed; CLI `version list/info` works against the live Mojang API.
-- **Phase 2 - Downloads**: concurrent library downloader, asset index (virtual + non-virtual). (TASK-458cd, TASK-ra35r)
-- **Phase 3 - Launch**: argument merging, natives unpacking, process spawn, log piping, exit codes. (TASK-wpwuz, TASK-y2n5u, TASK-qc438)
+- **Phase 2 - Downloads**: concurrent library downloader, asset index (virtual + non-virtual). **DONE (2026-08-10)**: TASK-458cd (`core/src/download.rs`, TASK-ra35r (`core/src/assets.rs`) landed; verified live on 1.8.9 (maven fallback URLs, `natives-windows-${arch}`), 1.21.4, and a 2026 snapshot (4-part classifier coordinates, ~5k assets).
+- **Phase 3 - Launch**: argument merging, natives unpacking, process spawn, log piping, exit codes. **DONE (2026-08-10)**: TASK-wpwuz (`core/src/rules.rs`, `core/src/args.rs`), TASK-y2n5u + TASK-qc438 (`core/src/launch.rs`, offline v3-UUID profile, log capture to `logs/launcher/`, exit-code propagation) landed; 1.21.4 launched to the title screen on Windows with Java 21.
 
 ## Testing
 
@@ -37,3 +37,7 @@ Implement the complete vanilla launch pipeline in the Rust core: manifest fetch,
 ## Rollback
 
 Core is a library - keep each phase on a feature flag; the CLI only exposes the pipeline when Phase 3 lands.
+
+## Retrospective
+
+- `git log`-style record: the pipeline shipped as a single change; asset duplicate hashes and 4-part/`${arch}` maven coordinates were only caught by live installs — worth adding fixture coverage if regressing.

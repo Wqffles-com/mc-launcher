@@ -31,6 +31,28 @@ pub enum Error {
     Zip(#[from] zip::result::ZipError),
     #[error("unknown mod loader: {0}")]
     UnknownLoader(String),
+    #[error("download of {url} failed SHA-1 verification (expected {expected}, got {actual})")]
+    ChecksumMismatch {
+        url: String,
+        expected: String,
+        actual: String,
+    },
+    #[error("download of {url} has an unexpected size")]
+    DownloadSizeMismatch { url: String },
+    #[error("no client jar download is available for version {0}")]
+    NoClientJar(String),
+    #[error("no Java runtime found (set JAVA_HOME or --java)")]
+    JavaNotFound,
+    #[error("invalid maven coordinate: {0}")]
+    InvalidMavenName(String),
+    #[error("internal task failed: {0}")]
+    Task(String),
+    #[error("asset object hash is malformed: {0}")]
+    InvalidAssetHash(String),
+    #[error("unsafe zip entry path: {0}")]
+    UnsafeZipPath(String),
+    #[error("version {0} has no main class")]
+    NoMainClass(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,7 +1,7 @@
 ---
 id: TASK-458cd
 title: Download client jar & libraries (progress, resume, verification)
-status: backlog
+status: done
 priority: critical
 type: feature
 effort: large
@@ -14,7 +14,7 @@ assignee: null
 tags: []
 position: a2
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-10
 ---
 
 # Download client jar & libraries (progress, resume, verification)
