@@ -4,6 +4,15 @@ Lightweight decision log. Format: `## YYYY-MM-DD: Decision Title`
 
 ---
 
+## 2026-08-11: Fabric loader (TASK-bxaph, EPIC-s7arr)
+
+- Fabric meta API (v2) is the single source for installs: `list_games`/`list_loaders` validate combinations, `profile/json` is the launcher profile. `MC_LAUNCHER_FABRIC_META_URL`-style mirror override is not (yet) provided — the base URL is only injectable at the library level (`*_with_base` functions used by tests).
+- The profile is a version JSON that `inheritsFrom` the game version: merged document = profile id + KnotClient main class + game libraries + profile libraries + game args + profile args (its `-DFabricMcEmu= net.minecraft.client.main.Main `), everything else (client jar, assets, Java version, logging) inherited from the game JSON.
+- **Library merge dedupes by `group:artifact`**: a profile library with the same group:artifact as a game library replaces it (the loader pins its own ASM 9.10.1 over the game's 9.6). Keeping both trips Fabric's `verifyClasspath` duplicate-ASM check (loader 0.19.x, verified live 2026-08-11).
+- Legacy library format: loader profiles emit `{name, url, sha1?, size?}` instead of a `downloads` block; `Library` gained optional `url`/`sha1`/`size` and `rules::library_file` falls back to the maven base `url` (default remains `libraries.minecraft.net`).
+- Profiles cached at `cache/loaders/fabric/<game>-<loader>.json` (reused without a network request); artifact downloads reuse the normal verified-download pipeline into the shared `downloads/` tree, and the merged version installs under `downloads/versions/<merged-id>/` so vanilla and loader versions never collide.
+- Loader selection stays a thin record on the instance config; `set-loader fabric` validates the version against the API, and `launch --instance` resolves + merges + installs the profile on demand (loader-version-specific artifacts are cached globally, so switching a loader version only downloads the delta).
+
 ## 2026-08-10: Microsoft auth (EPIC-xrju6)
 
 - Client id: ship the well-known public Microsoft client `00000000402B5328` (used by community launchers for the Minecraft device flow) as `DEFAULT_CLIENT_ID`; `MC_LAUNCHER_CLIENT_ID` env overrides it for self-hosted Azure registrations. A shared hosted client is deferred until release.

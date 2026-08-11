@@ -747,6 +747,9 @@ mod tests {
         let native_key = format!("natives-{}", Platform::current().os);
         let native_library = native.map(|(sha1, size)| Library {
             name: "org.example:natives:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(LibraryDownloads {
                 artifact: None,
                 classifiers: Some(BTreeMap::from([(
@@ -804,6 +807,9 @@ mod tests {
             },
             libraries: std::iter::once(Library {
                 name: "org.example:lib:1.0".to_owned(),
+                url: None,
+                sha1: None,
+                size: None,
                 downloads: Some(LibraryDownloads {
                     artifact: Some(dl(
                         &format!("{base}/lib.jar"),

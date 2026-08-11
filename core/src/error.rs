@@ -31,6 +31,10 @@ pub enum Error {
     Zip(#[from] zip::result::ZipError),
     #[error("unknown mod loader: {0}")]
     UnknownLoader(String),
+    #[error("Minecraft version {0} is not supported by Fabric")]
+    FabricGameNotFound(String),
+    #[error("Fabric loader version {loader} is not available for Minecraft {game}")]
+    FabricLoaderNotFound { game: String, loader: String },
     #[error("download of {url} failed SHA-1 verification (expected {expected}, got {actual})")]
     ChecksumMismatch {
         url: String,

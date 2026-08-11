@@ -174,10 +174,13 @@ pub fn library_file(lib: &Library, platform: &Platform) -> Result<Option<Library
         .map(|c| c.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/");
+    // Legacy libraries (loader profiles) carry a maven base `url` and
+    // optionally their own sha1/size instead of a `downloads` block.
+    let host = lib.url.as_deref().unwrap_or(MAVEN_FALLBACK_HOST);
     let download = download.unwrap_or_else(|| ArtifactDownload {
-        sha1: String::new(),
-        size: 0,
-        url: format!("{MAVEN_FALLBACK_HOST}/{url_path}"),
+        sha1: lib.sha1.clone().unwrap_or_default(),
+        size: lib.size.unwrap_or(0),
+        url: format!("{host}/{url_path}"),
     });
     let exclude = lib
         .extract
@@ -396,6 +399,9 @@ mod tests {
     fn library_without_rules_is_allowed() {
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: None,
             rules: None,
             natives: None,
@@ -421,6 +427,9 @@ mod tests {
         // A lone disallow rule denies everywhere (rules deny by default)...
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: None,
             rules: Some(vec![rule("disallow", Some("windows"))]),
             natives: None,
@@ -431,6 +440,9 @@ mod tests {
         // ...but an explicit allow for other platforms overrides it.
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: None,
             rules: Some(vec![
                 rule("disallow", Some("windows")),
@@ -447,6 +459,9 @@ mod tests {
     fn selects_plain_artifact_by_default() {
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: None,
             rules: None,
             natives: None,
@@ -469,6 +484,9 @@ mod tests {
     fn uses_download_when_present() {
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(crate::version_json::LibraryDownloads {
                 artifact: Some(ArtifactDownload {
                     sha1: "abc".to_owned(),
@@ -496,6 +514,9 @@ mod tests {
         ]);
         let lib = Library {
             name: "org.lwjgl:lwjgl:3.3.4".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(crate::version_json::LibraryDownloads {
                 artifact: Some(ArtifactDownload {
                     sha1: "a".to_owned(),
@@ -554,6 +575,9 @@ mod tests {
     fn arm64_prefers_arm64_native_classifier() {
         let lib = Library {
             name: "org.lwjgl:lwjgl:3.3.4".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(crate::version_json::LibraryDownloads {
                 artifact: None,
                 classifiers: Some(BTreeMap::from([
@@ -600,6 +624,9 @@ mod tests {
     fn no_native_for_os_means_none() {
         let lib = Library {
             name: "org.example:lib:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: None,
             rules: None,
             natives: Some(BTreeMap::from([(
@@ -619,6 +646,9 @@ mod tests {
     fn natives_resolve_legacy_arch_placeholder() {
         let lib = Library {
             name: "tv.twitch:twitch-platform:6.5".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(crate::version_json::LibraryDownloads {
                 artifact: None,
                 classifiers: Some(BTreeMap::from([(
@@ -711,6 +741,9 @@ mod tests {
         let libs = vec![
             Library {
                 name: "org.example:first:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
                 downloads: None,
                 rules: None,
                 natives: None,
@@ -718,6 +751,9 @@ mod tests {
             },
             Library {
                 name: "org.example:skip:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
                 downloads: None,
                 rules: Some(vec![rule("disallow", Some("windows"))]),
                 natives: None,
@@ -725,6 +761,9 @@ mod tests {
             },
             Library {
                 name: "org.example:third:1.0".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
                 downloads: None,
                 rules: None,
                 natives: None,
@@ -765,6 +804,9 @@ mod tests {
     fn resolve_libraries_includes_artifact_beside_natives() {
         let libs = vec![Library {
             name: "org.lwjgl.lwjgl:lwjgl-platform:2.9.4".to_owned(),
+            url: None,
+            sha1: None,
+            size: None,
             downloads: Some(crate::version_json::LibraryDownloads {
                 artifact: Some(ArtifactDownload {
                     sha1: "a".to_owned(),

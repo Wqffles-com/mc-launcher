@@ -90,6 +90,36 @@ enum Command {
         #[command(subcommand)]
         command: JavaCommand,
     },
+    /// Install and manage the Fabric mod loader
+    Fabric {
+        #[command(subcommand)]
+        command: FabricCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum FabricCommand {
+    /// List Fabric loader versions for a game version (or the game versions
+    /// Fabric supports, when no game is given)
+    List {
+        /// Minecraft version id (e.g. 1.21.4); without it, lists the game
+        /// versions Fabric supports
+        game: Option<String>,
+    },
+    /// Install the Fabric loader for a game version (defaults to the latest
+    /// stable loader): downloads the merged profile's client, libraries,
+    /// natives and assets
+    Install {
+        /// Minecraft version id (e.g. 1.21.4)
+        game: String,
+        /// Fabric loader version (e.g. 0.16.10); defaults to the latest
+        /// stable loader for the game version
+        #[arg(long)]
+        loader: Option<String>,
+        /// Re-fetch the loader profile, ignoring the cache
+        #[arg(long)]
+        refresh: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -237,6 +267,7 @@ async fn main() -> Result<()> {
         }
         Command::Version(args) => cmd_version(args).await,
         Command::Java { command } => cmd_java(command).await,
+        Command::Fabric { command } => cmd_fabric(command).await,
     }
 }
 
@@ -406,7 +437,7 @@ async fn cmd_launch(
     dirs.ensure_all()?;
     let manager = InstanceManager::new(dirs.clone());
 
-    let (version_id, game_dir, touch_id) = if let Some(name) = instance {
+    let (version_id, game_dir, touch_id, loader) = if let Some(name) = instance {
         if version.is_some() {
             anyhow::bail!("a version id cannot be combined with --instance");
         }
@@ -415,6 +446,7 @@ async fn cmd_launch(
             instance.version().to_owned(),
             instance.game_dir(),
             Some(instance.id().to_owned()),
+            instance.loader().cloned(),
         )
     } else {
         let version_id = match version {
@@ -422,7 +454,7 @@ async fn cmd_launch(
             None => latest_release(&dirs).await?,
         };
         let game_dir = scratch_game_dir(&dirs, &version_id);
-        (version_id, game_dir, None)
+        (version_id, game_dir, None, None)
     };
     std::fs::create_dir_all(&game_dir)?;
 
@@ -430,6 +462,8 @@ async fn cmd_launch(
     let version_json = launch::load_version_json(&dirs, &http_client(), &info, false)
         .await
         .context(format!("failed to load version JSON for '{version_id}'"))?;
+
+    let version_json = apply_loader(&dirs, version_json, &version_id, loader).await?;
 
     println!(
         "Preparing Minecraft {version_id} ({}) ...",
@@ -484,6 +518,40 @@ async fn cmd_launch(
         std::process::exit(outcome.exit.code().unwrap_or(1));
     }
     Ok(())
+}
+
+/// Apply an instance's loader selection to a version JSON: a loader profile
+/// replaces the vanilla version JSON with the merged profile (loader
+/// libraries and arguments on top of the game version). Returns the vanilla
+/// document unchanged when no loader is selected.
+async fn apply_loader(
+    dirs: &Directories,
+    version_json: mc_launcher_core::version_json::VersionJson,
+    version_id: &str,
+    loader: Option<Loader>,
+) -> Result<mc_launcher_core::version_json::VersionJson> {
+    let Some(loader) = loader else {
+        return Ok(version_json);
+    };
+    match loader.kind {
+        LoaderKind::Fabric => {
+            println!(
+                "Using Fabric loader {} for Minecraft {version_id} ...",
+                loader.version
+            );
+            let profile = mc_launcher_core::fabric::load_profile(
+                dirs,
+                &http_client(),
+                version_id,
+                &loader.version,
+                false,
+            )
+            .await
+            .context("failed to load the Fabric loader profile")?;
+            Ok(mc_launcher_core::fabric::merge(&version_json, &profile))
+        }
+        kind => anyhow::bail!("loader {kind} is not supported yet — only Fabric is implemented"),
+    }
 }
 
 /// Resolve the player profile for a launch: the explicitly selected account,
@@ -612,6 +680,105 @@ async fn cmd_java(command: JavaCommand) -> Result<()> {
                 "Installed Java {} at {}",
                 runtime.major,
                 runtime.home.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_fabric(command: FabricCommand) -> Result<()> {
+    let dirs = Directories::discover().context("could not resolve the data directory")?;
+    dirs.ensure_all()?;
+    let client = http_client();
+    match command {
+        FabricCommand::List { game } => {
+            if let Some(game) = game {
+                let loaders = mc_launcher_core::fabric::list_loaders(&client, &game)
+                    .await
+                    .context(format!(
+                        "failed to list Fabric loaders for Minecraft '{game}' \
+                         (is it supported by Fabric?)"
+                    ))?;
+                println!("FABRIC LOADERS FOR {}", game.to_uppercase());
+                for info in loaders {
+                    println!(
+                        "{:<14} {:<8} {}",
+                        info.loader.version,
+                        if info.loader.stable {
+                            "stable"
+                        } else {
+                            "unstable"
+                        },
+                        info.loader.maven
+                    );
+                }
+            } else {
+                let games = mc_launcher_core::fabric::list_games(&client)
+                    .await
+                    .context("failed to list Fabric game versions")?;
+                println!("FABRIC GAME VERSIONS");
+                for game in games {
+                    println!(
+                        "{:<22} {}",
+                        game.version,
+                        if game.stable { "stable" } else { "unstable" }
+                    );
+                }
+            }
+        }
+        FabricCommand::Install {
+            game,
+            loader,
+            refresh,
+        } => {
+            let loader_version = match loader {
+                Some(version) => mc_launcher_core::fabric::resolve_loader(
+                    &client,
+                    &game,
+                    &version,
+                )
+                .await
+                .context(format!(
+                    "Fabric loader '{version}' is not available for Minecraft '{game}'"
+                ))?,
+                None => mc_launcher_core::fabric::latest_loader(&client, &game)
+                    .await
+                    .context(format!(
+                        "failed to resolve a Fabric loader for Minecraft '{game}' \
+                         (is it supported by Fabric?)"
+                    ))?,
+            };
+            let profile = mc_launcher_core::fabric::load_profile(
+                &dirs,
+                &client,
+                &game,
+                &loader_version.version,
+                refresh,
+            )
+            .await
+            .context("failed to load the Fabric loader profile")?;
+            let info = resolve_version(&dirs, &game, false).await?;
+            let version_json = launch::load_version_json(&dirs, &client, &info, false)
+                .await
+                .context(format!("failed to load version JSON for '{game}'"))?;
+            let progress: Option<ProgressFn> = Some(Arc::new(print_progress));
+            let installed = mc_launcher_core::fabric::install(
+                &dirs,
+                &download_client(),
+                &version_json,
+                &profile,
+                &scratch_game_dir(&dirs, &profile.id),
+                progress,
+            )
+            .await
+            .context("failed to install the Fabric profile")?;
+            println!(
+                "Installed {} (Fabric loader {}, {} libraries). Point an instance at it with \
+                 `mc-launcher instance set-loader <instance> fabric {}`.",
+                installed.version.id,
+                loader_version.version,
+                installed.libraries.len(),
+                loader_version.version
             );
         }
     }
@@ -750,6 +917,23 @@ async fn cmd_instance(command: InstanceCommand) -> Result<()> {
                     "unknown loader '{kind}' (expected fabric, quilt, forge or neoforge)"
                 )
             })?;
+            if kind == LoaderKind::Fabric {
+                let inst = manager.get(&instance)?;
+                let loaders = mc_launcher_core::fabric::list_loaders(&http_client(), inst.version())
+                    .await
+                    .context(format!(
+                        "failed to check Fabric loaders for Minecraft '{}' (is it supported?)",
+                        inst.version()
+                    ))?;
+                if !loaders.iter().any(|info| info.loader.version == version) {
+                    anyhow::bail!(
+                        "Fabric loader '{version}' is not available for Minecraft '{}' — \
+                         run `mc-launcher fabric list {}`",
+                        inst.version(),
+                        inst.version()
+                    );
+                }
+            }
             let updated = manager.set_loader(&instance, kind, &version)?;
             println!(
                 "'{}' now uses {}",

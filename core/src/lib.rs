@@ -9,6 +9,7 @@ pub mod config;
 pub mod dirs;
 pub mod download;
 pub mod error;
+pub mod fabric;
 pub mod instances;
 pub mod java;
 pub mod launch;

@@ -32,7 +32,8 @@ const GAME_DIR_NAME: &str = "game";
 const MAX_NAME_LEN: usize = 64;
 
 /// Supported mod loaders. Selecting a loader only records the choice in the
-/// instance config; installing the loader itself is a later epic.
+/// instance config; installing the loader itself happens on install/launch
+/// (Fabric is implemented; Quilt/Forge/NeoForge are pending).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LoaderKind {

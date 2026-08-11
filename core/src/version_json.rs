@@ -134,6 +134,16 @@ pub struct ArtifactDownload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Library {
     pub name: String,
+    /// Legacy maven base URL (e.g. loader profiles emit `url` instead of a
+    /// `downloads` block). When present, it is used as the download host.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Legacy checksum/size attached to the library itself (loader profiles
+    /// may omit the `downloads` block but still verify by these).
+    #[serde(default)]
+    pub sha1: Option<String>,
+    #[serde(default)]
+    pub size: Option<u64>,
     #[serde(default)]
     pub downloads: Option<LibraryDownloads>,
     #[serde(default)]
